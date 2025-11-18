@@ -147,3 +147,54 @@ def gen_logreg_data(seed,batch_size=64,dim=10,n_samples=50,mean=0,std=1,
     ys = torch.concat((ys, torch.zeros(batch_size,n_samples,concat_dim-1,device=device)),dim=-1)
 
     return xs, ys, ws
+
+### CODE ADDED FOR OUR EXTENSION ###
+def sample_subspace_basis(dim, intrinsic_dim, device='cuda'):
+    """
+    Returns an orthonormal basis U for an intrinsic_dim-dimensional subspace of R^dim.
+    U has shape [dim, intrinsic_dim]; columns are orthonormal.
+    """
+    A = torch.randn(dim, intrinsic_dim, device=device)
+    # QR decomp gives an orthonormal basis in columns of Q
+    Q, _ = torch.linalg.qr(A, mode='reduced')  # Q: [dim, intrinsic_dim]
+    return Q
+
+
+def sample_cone_on_subspace(
+    n, dim, intrinsic_dim,
+    max_theta, min_theta=0.0,
+    basis=None,
+    gaussianize=False,
+    device='cuda'
+):
+    """
+    Sample n weight vectors lying in an intrinsic_dim-dim subspace of R^dim,
+    with directions restricted to a cone (spherical cap) in the intrinsic coordinates.
+
+    Returns:
+      ws:    [n, dim] weight vectors in R^dim
+      basis: [dim, intrinsic_dim] orthonormal basis used
+    """
+    if basis is None:
+        basis = sample_subspace_basis(dim, intrinsic_dim, device=device)  # [dim, k]
+
+    # 1) Sample directions on S^{k-1} within the cone, in intrinsic space
+    # reuse existing cone sampler but with d = intrinsic_dim
+    us = sample_cone(
+        n=n,
+        d=intrinsic_dim,
+        max_theta=max_theta,
+        min_theta=min_theta,
+        r=1.0,
+        gaussianize=gaussianize,
+        device=device
+    )  # [n, intrinsic_dim]
+
+    # 2) Embed into R^dim via basis: w = U u
+    # us: [n, k], basis: [dim, k]  → ws: [n, dim]
+    ws = torch.matmul(us, basis.T)  # (n, dim)
+
+    # 3) Normalize to unit norm just to be safe
+    ws = normalize(ws, dim=1)
+
+    return ws, basis
