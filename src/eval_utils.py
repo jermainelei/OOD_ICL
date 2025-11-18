@@ -112,3 +112,45 @@ def test_cone_falloff(model, device, grad_idxs, criterion, epoch, dim, batch_siz
         angles.append(a)
         losses.append(loss)
     return angles, losses
+
+# NEW FUNCTION TO TEST ON MANIFOLD
+def test_cone_falloff_manifold(model, device, grad_idxs, criterion, epoch,
+                               dim, intrinsic_dim, basis,
+                               batch_size, batches_per_epoch, seq_len, noise_std,
+                               offset=1000, test_batches=10,
+                               start_angle=0, end_angle=180, strip_width=5,
+                               gaussianize=True, lastonly=False, **kwargs):
+    """
+    Test the model's performance across a range of angles,
+    but restricting tasks to lie on a given intrinsic_dim-dimensional subspace
+    with orthonormal basis `basis` (on-manifold evaluation).
+    """
+    angles = []
+    losses = []
+    strip_width_ = strip_width * np.pi / 180
+
+    for a in range(start_angle, end_angle, strip_width):
+        a_ = a * np.pi / 180
+
+        # Sample tasks on the SAME manifold as training: w = basis @ u
+        ws, _ = dataset_utils.sample_cone_on_subspace(
+            n=batch_size,
+            dim=dim,
+            intrinsic_dim=intrinsic_dim,
+            max_theta=a_ + strip_width_,
+            min_theta=a_,
+            basis=basis,
+            gaussianize=gaussianize,
+            device=device
+        )
+
+        loss = test_model(
+            model, device, grad_idxs, criterion, epoch,
+            dim, batch_size, batches_per_epoch, seq_len,
+            noise_std, offset=offset, test_batches=test_batches,
+            ws=ws, lastonly=lastonly
+        )
+        angles.append(a)
+        losses.append(loss)
+
+    return angles, losses
