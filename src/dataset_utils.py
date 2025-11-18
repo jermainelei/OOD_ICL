@@ -164,6 +164,7 @@ def sample_cone_on_subspace(
     n, dim, intrinsic_dim,
     max_theta, min_theta=0.0,
     basis=None,
+    c = 1,
     gaussianize=False,
     device='cuda'
 ):
@@ -173,28 +174,40 @@ def sample_cone_on_subspace(
 
     Returns:
       ws:    [n, dim] weight vectors in R^dim
-      basis: [dim, intrinsic_dim] orthonormal basis used
+      basis: list of k bases of shape [dim, intrinsic_dim] k orthonormal bases used
     """
+    
     if basis is None:
-        basis = sample_subspace_basis(dim, intrinsic_dim, device=device)  # [dim, k]
-
+        basis = [sample_subspace_basis(dim, intrinsic_dim, device=device) for _ in range(c)]
+    assert c == len(basis)
     # 1) Sample directions on S^{k-1} within the cone, in intrinsic space
     # reuse existing cone sampler but with d = intrinsic_dim
-    us = sample_cone(
-        n=n,
-        d=intrinsic_dim,
-        max_theta=max_theta,
-        min_theta=min_theta,
-        r=1.0,
-        gaussianize=gaussianize,
-        device=device
-    )  # [n, intrinsic_dim]
+    ws = torch.empty(n, dim, device = device)
+    offset = 0
+    base, rem = n // c, n % c 
+    for i in range(c):
+        n_i = base + (1 if i < rem else 0)
+        us = sample_cone(
+            n=n_i,
+            d=intrinsic_dim,
+            max_theta=max_theta,
+            min_theta=min_theta,
+            r=1.0,
+            gaussianize=gaussianize,
+            device=device
+        )  # [n_per_basis, intrinsic_dim]
 
-    # 2) Embed into R^dim via basis: w = U u
-    # us: [n, k], basis: [dim, k]  → ws: [n, dim]
-    ws = torch.matmul(us, basis.T)  # (n, dim)
+        # 2) Embed into R^dim via basis: w = U u
+        # us: [n, k], basis: [dim, k]  → ws: [n, dim]
+        # Also, normalize to unit vector just in case
+        chunk = torch.matmul(us, basis[i].T)
+        chunk = normalize(chunk, dim = 1)
+        ws[offset:offset+n_i] = chunk
+        offset += n_i
 
-    # 3) Normalize to unit norm just to be safe
-    ws = normalize(ws, dim=1)
+
+    # 3) Idk if  we want to shuffle but we can if we want:
+    #perm = torch.randperm(us.size(0), device=us.device)
+    #ws = ws[perm]
 
     return ws, basis

@@ -25,9 +25,9 @@ def get_batch(pretrain_size, batch_size, ws=None, online=False, dim=10, angle=np
         batch_ws_idxs = np.concatenate((batch_ws_idxs,addl))
     return ws[batch_ws_idxs]
 
-# ADDED INTRINSIC_DIM = NONE (NEW PARAMETER)
+# ADDED INTRINSIC_DIM = NONE (NEW PARAMETER), C = 1 (NUM OF BASIS)
 def train(batch_size=128, lr=3e-4, epochs=120, batches_per_epoch=100, device='cuda',
-          seq_len=50, d_model=128, n_layer=10, dim=10, noise_std=0, checkpoint_dir="checkpoints/", 
+          seq_len=50, d_model=128, n_layer=10, dim=10, noise_std=0, c = 1, checkpoint_dir="checkpoints/", 
           pretrain_size=2**10, angle=180, lr_milestones=[], gaussianize=False,
           save_freq=3, output_dir="output/", intrinsic_dim = None):
     """Train a transformer to do in-context linear regression with weight vectors sampled
@@ -103,6 +103,7 @@ def train(batch_size=128, lr=3e-4, epochs=120, batches_per_epoch=100, device='cu
             n=pretrain_size,
             dim=dim,
             intrinsic_dim=intrinsic_dim,
+            c = c,
             max_theta=angle,    # still radians
             min_theta=0.0,
             gaussianize=gaussianize,
@@ -169,7 +170,7 @@ def train(batch_size=128, lr=3e-4, epochs=120, batches_per_epoch=100, device='cu
     if intrinsic_dim is not None and intrinsic_dim < dim:
         angles_on, losses_on = test_cone_falloff_manifold(
             model, device, grad_idxs, criterion, epoch,
-            dim, intrinsic_dim, subspace_basis,
+            dim, intrinsic_dim, subspace_basis, c,
             batch_size, batches_per_epoch, seq_len, noise_std,
             offset=20000, test_batches=250,
             start_angle=0, end_angle=180, strip_width=5,

@@ -115,7 +115,7 @@ def test_cone_falloff(model, device, grad_idxs, criterion, epoch, dim, batch_siz
 
 # NEW FUNCTION TO TEST ON MANIFOLD
 def test_cone_falloff_manifold(model, device, grad_idxs, criterion, epoch,
-                               dim, intrinsic_dim, basis,
+                               dim, intrinsic_dim, basis, c,
                                batch_size, batches_per_epoch, seq_len, noise_std,
                                offset=1000, test_batches=10,
                                start_angle=0, end_angle=180, strip_width=5,
@@ -137,6 +137,7 @@ def test_cone_falloff_manifold(model, device, grad_idxs, criterion, epoch,
             n=batch_size,
             dim=dim,
             intrinsic_dim=intrinsic_dim,
+            c = c,
             max_theta=a_ + strip_width_,
             min_theta=a_,
             basis=basis,
