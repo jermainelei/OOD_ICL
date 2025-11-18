@@ -6,7 +6,7 @@ import dataset_utils
 import time
 from pathlib import Path
 from eval_utils import DiscreteMMSE, interpolate_great_circle_and_test
-from eval_utils import test_model, test_cone_falloff
+from eval_utils import test_model, test_cone_falloff, test_cone_falloff_manifold # import new function
 
 def get_batch(pretrain_size, batch_size, ws=None, online=False, dim=10, angle=np.pi, min_angle=0., gaussianize=False):
     if online:
@@ -25,10 +25,11 @@ def get_batch(pretrain_size, batch_size, ws=None, online=False, dim=10, angle=np
         batch_ws_idxs = np.concatenate((batch_ws_idxs,addl))
     return ws[batch_ws_idxs]
 
+# ADDED INTRINSIC_DIM = NONE (NEW PARAMETER)
 def train(batch_size=128, lr=3e-4, epochs=120, batches_per_epoch=100, device='cuda',
           seq_len=50, d_model=128, n_layer=10, dim=10, noise_std=0, checkpoint_dir="checkpoints/", 
           pretrain_size=2**10, angle=180, lr_milestones=[], gaussianize=False,
-          save_freq=3, output_dir="output/"):
+          save_freq=3, output_dir="output/", intrinsic_dim = None):
     """Train a transformer to do in-context linear regression with weight vectors sampled
     from a hyperspherical cap with a given angle.
     Args:
@@ -84,7 +85,30 @@ def train(batch_size=128, lr=3e-4, epochs=120, batches_per_epoch=100, device='cu
     loss_history = [0]*batches_per_epoch*epochs
     test_loss_history = [0]*epochs
 
-    ws = dataset_utils.sample_cone(pretrain_size, dim, angle, gaussianize=gaussianize) 
+    # UPDATE SAMPLING BLOCK 
+    # previous: ws = dataset_utils.sample_cone(pretrain_size, dim, angle, gaussianize=gaussianize) 
+
+    if intrinsic_dim is None or intrinsic_dim >= dim:
+        # Original behavior: tasks on full d-dimensional spherical cap
+        ws = dataset_utils.sample_cone(
+            pretrain_size,
+            dim,
+            angle,              # angle is already in radians here
+            gaussianize=gaussianize
+        )
+        subspace_basis = None
+    else:
+        # New behavior: tasks on a k-dimensional manifold embedded in R^dim
+        ws, subspace_basis = dataset_utils.sample_cone_on_subspace(
+            n=pretrain_size,
+            dim=dim,
+            intrinsic_dim=intrinsic_dim,
+            max_theta=angle,    # still radians
+            min_theta=0.0,
+            gaussianize=gaussianize,
+            device=device
+        )
+
     dmmse = DiscreteMMSE(ws)
 
     for epoch in range(1,epochs+1):
@@ -126,9 +150,34 @@ def train(batch_size=128, lr=3e-4, epochs=120, batches_per_epoch=100, device='cu
     np.save(checkpoint_dir + "loss_history.npy", loss_history)
     np.save(checkpoint_dir + "test_loss_history.npy", test_loss_history)
 
+    # UPDATE FOR OFF MANIFOLD AND ON MANIFOLD EVAL
+    """
     angles, losses = test_cone_falloff(model, device, grad_idxs, criterion, epoch, dim, batch_size,
                batches_per_epoch, seq_len, noise_std, offset=10000,test_batches=250,
                start_angle=0, end_angle=180, strip_width=5, gaussianize=gaussianize,lastonly=True)
+    """
+
+    # === Off-manifold evaluation (original): tasks on full d-sphere ===
+    angles_off, losses_off = test_cone_falloff(
+        model, device, grad_idxs, criterion, epoch, dim, batch_size,
+        batches_per_epoch, seq_len, noise_std, offset=10000, test_batches=250,
+        start_angle=0, end_angle=180, strip_width=5,
+        gaussianize=gaussianize, lastonly=True
+    )
+
+    # === On-manifold evaluation (NEW): tasks restricted to the k-dim subspace ===
+    if intrinsic_dim is not None and intrinsic_dim < dim:
+        angles_on, losses_on = test_cone_falloff_manifold(
+            model, device, grad_idxs, criterion, epoch,
+            dim, intrinsic_dim, subspace_basis,
+            batch_size, batches_per_epoch, seq_len, noise_std,
+            offset=20000, test_batches=250,
+            start_angle=0, end_angle=180, strip_width=5,
+            gaussianize=gaussianize, lastonly=True
+        )
+    else:
+        # No manifold structure; just reuse off-manifold results
+        angles_on, losses_on = angles_off, losses_off
 
     interp_weights, interp_losses, dmmse_losses = interpolate_great_circle_and_test(model, device, grad_idxs, criterion, epoch, dim, batch_size,
                                       ws, batches_per_epoch, seq_len, noise_std, dmmse=dmmse)
@@ -138,5 +187,17 @@ def train(batch_size=128, lr=3e-4, epochs=120, batches_per_epoch=100, device='cu
     np.save(output_dir+"interp_losses_angle{0}_tasks{1}".format(angle_degrees,task),interp_losses)
     np.save(output_dir+"interp_dmmse_angle{0}_tasks{1}".format(angle_degrees,task),dmmse_losses)
 
+    # UPDATE SAVING DIFFERENT LOSSES
+    """
     np.save(output_dir+"losses_angle{0}_tasks{1}.npy".format(angle_degrees,task), losses)
     return model, loss_history, test_loss_history, angles, losses
+    """
+
+    # Off-manifold falloff (same filename pattern as original)
+    np.save(output_dir + "losses_angle{0}_tasks{1}.npy".format(angle_degrees, task), losses_off)
+
+    # On-manifold falloff (new filename)
+    np.save(output_dir + "losses_manifold_angle{0}_tasks{1}.npy".format(angle_degrees, task), losses_on)
+
+    # For backwards compatibility, return the off-manifold results
+    return model, loss_history, test_loss_history, angles_off, losses_off
