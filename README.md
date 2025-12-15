@@ -1,10 +1,10 @@
-# OODICL — In-Context Learning with Training on Low-dimensional Subspaces  
+# OOD_ICL — In-Context Learning with Training on Low-dimensional Subspaces  
 Code for **“In-Context Learning with Training on Low-dimensional Subspaces for Out of Distribution Tasks”**    
 Mishty Dhekial, Jermaine Lei, Imra Dawoodani, David Yang (UC Berkeley)  
 This repository studies *when* transformer in-context learning (ICL) generalizes **out-of-distribution (OOD)** by controlling the **geometry and dimensional structure** of the *task distribution* during pretraining.  
 We build on the linear-regression ICL framework popularized by Goddard et al. (ICML 2025) and extend it to **union-of-subspaces** task distributions (low intrinsic dimension, multiple subspaces, controllable directional coverage).  
 > **Upstream / credit:** This project uses and modifies the GPT-2 style regression-transformer training/eval pipeline from Chase Goddard et al.’s codebase:    
-> https://github.com/cwgoddard/OOD\_ICL  
+> https://github.com/cwgoddard/OOD_ICL  
 ---  
 ## What problem does this code implement?  
 ### In-context linear regression (task family)  
